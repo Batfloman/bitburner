@@ -1,0 +1,161 @@
+import { NS, RunOptions, ScriptArg } from "@ns";
+import { getFreeRAM, get_Access, validateHostname } from "./servers";
+import { get_subservers } from "./subservers";
+
+export interface Script {
+  filename: string,
+  opts?: {
+    threads?: number,
+    duration?: number,
+    args?: any[],
+  },
+  status?: {
+    pid: number,
+    hostname?: string,
+    starttime?: number,
+  },
+}
+
+export function haveScriptsSameArgs(script1: Script, script2: Script): boolean {
+  const sameFile = script1.filename == script2.filename;
+  const args1 = script1.opts?.args ?? [];
+  const args2 = script2.opts?.args ?? [];
+  const sameArgs = areArraysIdentical(args1, args2)
+  return sameFile && sameArgs;
+}
+
+export function calculateRamCost(ns: NS, scripts: Script[]): number {
+  let sum = 0;
+
+  scripts.forEach(script => {
+    const threads = script.opts?.threads ?? 1;
+    sum += threads * ns.getScriptRam(script.filename)
+  })
+
+  return sum;
+}
+
+export function runScriptOnServer(ns: NS, hostname: string, script: Script): Script {
+  validateFilename(ns, script.filename);
+  validateHostname(ns, hostname);
+
+  const threads = script.opts?.threads ?? 1;
+  const args = script.opts?.args ?? [];
+
+  ns.scp(script.filename, hostname, "home");
+  const pid = ns.exec(script.filename, hostname, threads, ...args)
+
+  if (pid === 0) throw new Error(`Failed to start script ${script.filename} on ${hostname}`);
+
+  script.status = {
+    pid: pid,
+    starttime: Date.now(),
+    hostname: hostname,
+  }
+
+  return script
+}
+
+type RunRes = {
+  hasRun: boolean,
+  pid: number,
+  hostname: string,
+}
+
+export function runOnFree(ns: NS, scriptName: string, servers: string[] | null = null, threadOrOptions?: number | RunOptions, ...args: ScriptArg[]): RunRes {
+  if (!ns.fileExists(scriptName, "home")) {
+    ns.ui.openTail();
+    ns.printf("%s is not a valid filename", scriptName);
+    ns.exit()
+  }
+
+  const ram = ns.getScriptRam(scriptName);
+
+  const server_arr = servers || Array.from(get_subservers(ns, "home"));
+  const potentialServers = server_arr.map(server => ns.getServer(server));
+  const freeServers = potentialServers
+    .filter(server => get_Access(ns, server.hostname))
+    .filter(server => (server.maxRam - server.ramUsed) > ram)
+
+  if (freeServers.length <= 0) return {
+    hasRun: false,
+    pid: 0,
+    hostname: "",
+  };
+
+  const executer = freeServers[0];
+  ns.scp(scriptName, executer.hostname, "home");
+  const pid = ns.exec(scriptName, executer.hostname, threadOrOptions, ...args)
+
+  return {
+    hasRun: pid != 0,
+    pid: pid,
+    hostname: executer.hostname,
+  }
+}
+
+function areArraysIdentical(arr1: any[], arr2: any[]) {
+  if (arr1.length !== arr2.length) {
+    return false;
+  }
+  for (let i = 0; i < arr1.length; i++) {
+    if (arr1[i] !== arr2[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function findRunningScript(ns: NS, scriptName: string, ...args: ScriptArg[]): Script[] {
+  const servers = Array.from(get_subservers(ns, "home")).map(server => ns.getServer(server));
+  const scriptList: Script[] = [];
+
+  servers.forEach(server => {
+    const scripts = ns.ps(server.hostname);
+    scripts.forEach(script => {
+      if (script.filename != scriptName) return;
+      if (!areArraysIdentical(script.args, args)) return;
+
+      const myScript: Script = {
+        filename: script.filename,
+        opts: {
+          args: script.args ?? 0,
+          threads: script.threads ?? 1,
+        },
+        status: {
+          pid: script.pid,
+        }
+      }
+      scriptList.push(myScript);
+    })
+  })
+
+  return scriptList;
+}
+
+// ==================================================
+
+const running = new Map();
+
+// ==================================================
+
+export function validateFilename(ns: NS, scriptName: string) {
+  if (!ns.fileExists(scriptName)) {
+    ns.ui.openTail();
+    ns.printf("%s is not a valid script name!", scriptName)
+    ns.exit()
+  }
+}
+
+export function findExecutor(ns: NS, script: Script): string | undefined {
+  validateFilename(ns, script.filename)
+
+  const threads = script.opts?.threads || 1;
+  const ram_cost = ns.getScriptRam(script.filename) * threads;
+
+  const validServers = get_subservers(ns, "home")
+    .filter(server => server != "home")
+    .filter(server => getFreeRAM(ns, server) > ram_cost);
+
+  return validServers[0];
+}
