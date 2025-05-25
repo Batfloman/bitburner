@@ -92,63 +92,33 @@ async function minimize(ns: NS, targetName: string, running: Map<string, Script[
       continue;
     }
 
-    let availableRam = thresh - cur;
-
     // minimize
 
     const buffer = new AllocationBuffer(ns, 50);
 
-    ns.print("====")
+    const runningWeak_threads = runningWeak.reduce((sum, script: Script) => sum + (script.opts?.threads ?? 1), 0);
+    const runningGrow_threads = runningGrow.reduce((sum, script: Script) => sum + (script.opts?.threads ?? 1), 0);
 
-    if (runningWeak.length <= neededWeak) {
+    if (runningWeak_threads < neededWeak) {
       const script: Script = { filename: WEAK, opts: { args: [targetName] } }
-      const scripts = runScriptsUntilRamLimit(ns, script, availableRam)
-      ns.print(scripts)
-      runningWeak = runningWeak.concat(scripts);
-      availableRam -= calculateRamCost(ns, scripts);
+
+      const runThreads = Math.min(neededWeak, buffer.getThreadsUntilRamLimit(script));
+      const res: Script[] = buffer.allocateUpToThreads(script, runThreads);
+      runningWeak = runningWeak.concat(res);
     }
-
-    if (runningWeak.length > neededWeak) {
-      const now = Date.now()
-      runningWeak.sort((a, b) => {
-        const a_timeleft = (a.status?.starttime ?? 0) - now;
-        const b_timeleft = (b.status?.starttime ?? 0) - now;
-        return a_timeleft - b_timeleft;
-      })
-
-      while (runningWeak.length > neededWeak) {
-        const thread = runningWeak.pop();
-        if (thread?.status) ns.kill(thread.status?.pid)
-      };
-    }
-
-    if (runningWeak.length >= neededWeak && runningGrow.length < neededGrow) {
-      ns.printf("Running Grow")
+    if (runningWeak_threads >= neededWeak && runningGrow_threads < neededGrow) {
       const script: Script = { filename: GROW, opts: { args: [targetName] } }
-      const scripts = runScriptsUntilRamLimit(ns, script, availableRam)
-      runningGrow = runningGrow.concat(scripts);
-      ns.printf("avail %f", availableRam)
-      availableRam -= calculateRamCost(ns, scripts);
-      ns.printf("less %f", availableRam)
+
+      const runThreads = Math.min(neededGrow, buffer.getThreadsUntilRamLimit(script));
+      const res: Script[] = buffer.allocateUpToThreads(script, runThreads);
+      runningGrow = runningGrow.concat(res);
     }
 
-    if (runningGrow.length > neededGrow) {
-      const now = Date.now()
-      runningGrow.sort((a, b) => {
-        const a_timeleft = (a.status?.starttime ?? 0) - now;
-        const b_timeleft = (b.status?.starttime ?? 0) - now;
-        return a_timeleft - b_timeleft;
-      })
-
-      while (runningGrow.length > neededWeak) {
-        const thread = runningGrow.pop();
-        if (thread?.status) ns.kill(thread.status?.pid)
-      };
-    }
+    buffer.execute();
 
     running.set(GROW, runningGrow)
     running.set(WEAK, runningWeak)
 
-    await ns.sleep(10000);
+    await ns.sleep(1000);
   }
 }

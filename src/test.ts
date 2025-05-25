@@ -21,6 +21,7 @@ export async function main(ns: NS): Promise<void> {
   buffer.allocate(script2);
   buffer.allocate(script2);
   buffer.allocate(script2);
+  buffer.allocate(script2);
 
   for (const [key, value] of buffer.executors) {
     ns.print(" - ", key, " -> ", value)
