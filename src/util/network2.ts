@@ -1,5 +1,5 @@
 import { NS, } from "@ns"
-import { getTotalRAM, runScriptsUpToCount } from "./network";
+import { getTotalRam, runScriptsUpToCount } from "./network";
 import { haveScriptsSameArgs, runScriptOnServer, Script, ScriptTemplate } from "./scripts"
 import { validateHostname } from "./servers";
 import { getExecutors } from "./subservers";
@@ -51,7 +51,7 @@ export class AllocationBuffer {
 
   constructor(ns: NS, allowedRamUsagePercent = 100) {
     this.ns = ns;
-    this.ramLimit = allowedRamUsagePercent / 100 * getTotalRAM(ns);
+    this.ramLimit = allowedRamUsagePercent / 100 * getTotalRam(ns);
 
     this.executors = new Map();
 
@@ -98,6 +98,7 @@ export class AllocationBuffer {
       if (needToBeAllocated <= 0) break;
 
       const canRun = Math.floor(server.freeRam / scriptRam);
+      if (canRun <= 0) continue;
       const allocatedThreads = Math.min(needToBeAllocated, canRun);
 
       const s: ScriptTemplate = { ...script, threads: allocatedThreads }
@@ -107,6 +108,7 @@ export class AllocationBuffer {
         (this.executors.get(server.hostname) ?? []).concat(s)
       )
 
+      server.allocatedRam += allocatedThreads * scriptRam;
       needToBeAllocated -= allocatedThreads;
     }
 

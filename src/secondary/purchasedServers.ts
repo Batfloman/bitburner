@@ -4,6 +4,12 @@ export async function main(ns: NS): Promise<void> {
   ns.disableLog("sleep")
   ns.ui.openTail();
 
+  const tailwidth = 666;
+  const tailheight = 200;
+  const [w_width, w_height] = ns.ui.windowSize()
+  ns.ui.moveTail(.95 * w_width - tailwidth - 25, 0)
+  ns.ui.resizeTail(tailwidth, tailheight)
+
   renameServers(ns);
 
   while (true) {

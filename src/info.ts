@@ -1,11 +1,17 @@
 import { NS, Server } from "@ns";
-import { getTotalFreeRAM, getTotalRAM, getTotalUsedRAM } from "./util/network";
+import { getTotalFreeRAM, getTotalRam, getTotalUsedRAM } from "./util/network";
 import { getFreeRAM, getMoneyPerSec, get_Access } from "./util/servers";
 import { find_minimizer_target, find_target, get_subservers } from "./util/subservers";
 
 export async function main(ns: NS): Promise<void> {
   ns.disableLog("ALL")
   ns.ui.openTail();
+
+  const tailwidth = 666;
+  const tailheight = 250;
+  const [w_width, w_height] = ns.ui.windowSize()
+  ns.ui.moveTail(1 * w_width - tailwidth - 25, .4 * w_height)
+  ns.ui.resizeTail(tailwidth, tailheight)
 
   while (true) {
     ns.clearLog();
@@ -22,7 +28,7 @@ export async function main(ns: NS): Promise<void> {
     ns.printf("target   %s", find_target(ns))
     ns.printf("minimize %s", find_minimizer_target(ns))
 
-    ns.printf("Used %.2f: %s / %s", getTotalUsedRAM(ns) / getTotalRAM(ns), ns.formatRam(getTotalUsedRAM(ns)), ns.formatRam(getTotalRAM(ns)))
+    ns.printf("Used %.2f: %s / %s", getTotalUsedRAM(ns) / getTotalRam(ns), ns.formatRam(getTotalUsedRAM(ns)), ns.formatRam(getTotalRam(ns)))
 
     await ns.sleep(10);
   }

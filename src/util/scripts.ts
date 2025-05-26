@@ -6,6 +6,7 @@ export interface ScriptTemplate {
   filename: string,
   threads?: number,
   args?: any[],
+  duration?: number,
 }
 
 export interface Script extends ScriptTemplate {
@@ -23,7 +24,7 @@ export function haveScriptsSameArgs(script1: ScriptTemplate, script2: ScriptTemp
   return sameFile && sameArgs;
 }
 
-export function calculateRamCost(ns: NS, scripts: Script[]): number {
+export function getRamCost(ns: NS, ...scripts: Script[]): number {
   let sum = 0;
 
   scripts.forEach(script => {
@@ -34,7 +35,7 @@ export function calculateRamCost(ns: NS, scripts: Script[]): number {
   return sum;
 }
 
-export function runScriptOnServer(ns: NS, hostname: string, script: Script): Script {
+export function runScriptOnServer(ns: NS, hostname: string, script: ScriptTemplate): Script {
   validateFilename(ns, script.filename);
   validateHostname(ns, hostname);
 
@@ -44,7 +45,10 @@ export function runScriptOnServer(ns: NS, hostname: string, script: Script): Scr
   ns.scp(script.filename, hostname, "home");
   const pid = ns.exec(script.filename, hostname, threads, ...args)
 
-  if (pid === 0) throw new Error(`Failed to start script ${script.filename} on ${hostname}`);
+  if (pid === 0) {
+    ns.print("Failed to start script:\n", script)
+    throw new Error(`Failed to start script ${script.filename} on ${hostname}\n`);
+  }
 
   const s: Script = {
     ...script,
