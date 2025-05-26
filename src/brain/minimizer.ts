@@ -1,7 +1,7 @@
 import { NS } from "@ns"
 import { getTotalRAM, runScriptsOnFreeServer, runScriptsUntilRamLimit } from "/util/network";
 import { AllocationBuffer } from "/util/network2";
-import { calculateRamCost, findRunningScript, Script } from "/util/scripts";
+import { calculateRamCost, findRunningScript, Script, ScriptTemplate } from "/util/scripts";
 import { isMoneyMaxed, isWeakend } from "/util/servers";
 import { find_minimizer_target } from "/util/subservers"
 import { calculateWeakenThreads, neededGrowThreads, neededWeakenThreads } from "/util/threads";
@@ -46,9 +46,12 @@ async function minimize(ns: NS, targetName: string, running: Map<string, Script[
     let runningGrow = running.get(GROW) ?? [];
     let runningWeak = running.get(WEAK) ?? [];
 
+    const runningWeak_threads = runningWeak.reduce((sum, script: Script) => sum + (script.threads ?? 1), 0);
+    const runningGrow_threads = runningGrow.reduce((sum, script: Script) => sum + (script.threads ?? 1), 0);
+
     let neededWeak = neededWeakenThreads(ns, targetName);
-    if (runningGrow.length > 0) {
-      let sec_increase = ns.growthAnalyzeSecurity(runningGrow.length, targetName);
+    if (runningGrow_threads > 0) {
+      let sec_increase = ns.growthAnalyzeSecurity(runningGrow_threads, targetName);
       neededWeak += calculateWeakenThreads(ns, sec_increase)
     }
     neededWeak = Math.ceil(neededWeak);
@@ -57,17 +60,18 @@ async function minimize(ns: NS, targetName: string, running: Map<string, Script[
     const neededGrow = Math.ceil(neededGrowThreads(ns, targetName));
     const time_grow = ns.getGrowTime(targetName);
 
+
     // print
 
     const server = ns.getServer(targetName);
     // ns.print(findRunningScript(ns, "brain/weak.js", targetName))
     ns.printf("====+ %s =====\n", targetName);
     ns.printf("--- grow ---");
-    ns.printf("   Running: %d / %d", runningGrow.length, neededGrow);
+    ns.printf("   Running: %d / %d", runningGrow_threads, neededGrow);
     ns.printf("   Time: %s", ns.tFormat(time_grow))
     ns.printf("   Money: %s / %s", ns.formatNumber(server.moneyAvailable), ns.formatNumber(server.moneyMax));
     ns.printf("--- weaken ---");
-    ns.printf("   Running: %d / %d", runningWeak.length, neededWeak);
+    ns.printf("   Running: %d / %d", runningWeak_threads, neededWeak);
     ns.printf("   Time: %s", ns.tFormat(time_weaken))
     ns.printf("   Security: %.2f / %.2f", server.hackDifficulty, server.minDifficulty);
 
@@ -96,28 +100,31 @@ async function minimize(ns: NS, targetName: string, running: Map<string, Script[
 
     const buffer = new AllocationBuffer(ns, 50);
 
-    const runningWeak_threads = runningWeak.reduce((sum, script: Script) => sum + (script.opts?.threads ?? 1), 0);
-    const runningGrow_threads = runningGrow.reduce((sum, script: Script) => sum + (script.opts?.threads ?? 1), 0);
-
     if (runningWeak_threads < neededWeak) {
-      const script: Script = { filename: WEAK, opts: { args: [targetName] } }
-
-      const runThreads = Math.min(neededWeak, buffer.getThreadsUntilRamLimit(script));
-      const res: Script[] = buffer.allocateUpToThreads(script, runThreads);
-      runningWeak = runningWeak.concat(res);
+      const template: ScriptTemplate = { filename: WEAK, args: [targetName] }
+      const missing = neededWeak - runningWeak_threads;
+      const could = buffer.getThreadsUntilRamLimit(template)
+      const runThreads = Math.min(missing, could);
+      buffer.allocateUpToThreads(template, runThreads);
     }
-    if (runningWeak_threads >= neededWeak && runningGrow_threads < neededGrow) {
-      const script: Script = { filename: GROW, opts: { args: [targetName] } }
+    else {
+      if (runningGrow_threads < neededGrow) {
+        const template: ScriptTemplate = { filename: GROW, args: [targetName] }
+        const missing = neededGrow - runningGrow_threads;
+        const could = buffer.getThreadsUntilRamLimit(template)
+        const runThreads = Math.min(missing, could);
 
-      const runThreads = Math.min(neededGrow, buffer.getThreadsUntilRamLimit(script));
-      const res: Script[] = buffer.allocateUpToThreads(script, runThreads);
-      runningGrow = runningGrow.concat(res);
+        buffer.allocateUpToThreads(template, runThreads);
+      }
     }
 
-    buffer.execute();
+    const executedScripts = buffer.execute();
 
-    running.set(GROW, runningGrow)
-    running.set(WEAK, runningWeak)
+    const executedWeak = executedScripts.filter(s => s.filename === WEAK);
+    const executedGrow = executedScripts.filter(s => s.filename === GROW);
+
+    running.set(GROW, runningGrow.concat(executedGrow))
+    running.set(WEAK, runningWeak.concat(executedWeak))
 
     await ns.sleep(1000);
   }

@@ -1,6 +1,6 @@
 import { NS, } from "@ns"
-import { getTotalRAM } from "./network";
-import { haveScriptsSameArgs, runScriptOnServer, Script } from "./scripts"
+import { getTotalRAM, runScriptsUpToCount } from "./network";
+import { haveScriptsSameArgs, runScriptOnServer, Script, ScriptTemplate } from "./scripts"
 import { validateHostname } from "./servers";
 import { getExecutors } from "./subservers";
 
@@ -39,14 +39,14 @@ export function getAllocationServerList(ns: NS, servers: string[]): ServerAlloca
   return list;
 }
 
-export function getExecutorAllocators(ns: NS, rootName: string, exclude: string[]) {
+export function getExecutorAllocators(ns: NS, rootName: string, exclude: string[]): ServerAllocation[] {
   const servers = getExecutors(ns, rootName, exclude);
   return getAllocationServerList(ns, servers);
 }
 
 export class AllocationBuffer {
   ns: NS;
-  executors: Map<string, Script[]>;
+  executors: Map<string, ScriptTemplate[]>;
   ramLimit: number;
 
   constructor(ns: NS, allowedRamUsagePercent = 100) {
@@ -60,22 +60,22 @@ export class AllocationBuffer {
     }, "clearBuffer")
   }
 
-  getThreadsUntilRamLimit(script: Script): number {
+  getThreadsUntilRamLimit(script: ScriptTemplate): number {
     const ram = this.ns.getScriptRam(script.filename, "home");
-    const threads = script.opts?.threads ?? 1;
+    const threads = script.threads ?? 1;
     const ramUsage = ram * threads;
 
     return Math.floor(this.ramLimit / ramUsage)
   }
 
-  allocate(script: Script): Script | undefined {
+  allocate(script: ScriptTemplate): boolean {
     const ramCost = this.ns.getScriptRam(script.filename, "home");
 
     const allocators = getExecutorAllocators(this.ns, "home", ["home"])
       .filter(server => server.freeRam >= ramCost)
-      .sort((a, b) => a.freeRam - b.freeRam);
+      .sort((a, b) => a.maxRam - b.freeRam);
 
-    if (allocators.length <= 0) return;
+    if (allocators.length <= 0) return false;
     const allocator: ServerAllocation = allocators[0];
 
     allocator.allocatedRam += ramCost;
@@ -84,12 +84,10 @@ export class AllocationBuffer {
       (this.executors.get(allocator.hostname) ?? []).concat(script)
     )
 
-    return script;
+    return true;
   }
 
-  allocateUpToThreads(script: Script, threads: number): Script[] {
-    const list: Script[] = []
-
+  allocateUpToThreads(script: ScriptTemplate, threads: number): number {
     const scriptRam = this.ns.getScriptRam(script.filename, "home")
     let needToBeAllocated = threads;
 
@@ -99,42 +97,56 @@ export class AllocationBuffer {
     for (const server of allocators) {
       if (needToBeAllocated <= 0) break;
 
-      this.ns.print(server.freeRam, " < ", server.maxRam, " | ", server.allocatedRam)
       const canRun = Math.floor(server.freeRam / scriptRam);
-      this.ns.print(server.hostname, " can run ", canRun);
-      const threads = Math.min(canRun, needToBeAllocated);
+      const allocatedThreads = Math.min(needToBeAllocated, canRun);
 
-      const s: Script = {
-        ...script,
-        opts: {
-          ...script.opts,
-          threads: threads,
-        }
-      }
+      const s: ScriptTemplate = { ...script, threads: allocatedThreads }
 
-      list.push(s)
       this.executors.set(
         server.hostname,
         (this.executors.get(server.hostname) ?? []).concat(s)
       )
 
-      needToBeAllocated -= threads;
+      needToBeAllocated -= allocatedThreads;
     }
 
-    return list;
+    return threads - needToBeAllocated;
   }
 
-  execute(): void {
+  execute(): Script[] {
+    this.mergeThreads();
+
+    const scriptList: Script[] = []
+
     this.executors.forEach((scripts: Script[], hostname: string) => {
       scripts.forEach(script => {
-        runScriptOnServer(this.ns, hostname, script);
+        scriptList.push(runScriptOnServer(this.ns, hostname, script))
         this.clearAllocation(script, hostname);
       })
     })
     this.executors.clear()
+
+    return scriptList;
   }
 
-  clearAllocation(script: Script, hostname: string) {
+  private mergeThreads(): void {
+    for (const [hostname, scripts] of this.executors) {
+      const merged: ScriptTemplate[] = [];
+
+      for (const script of scripts) {
+        const existing: Script | undefined = merged.find(s => haveScriptsSameArgs(s, script));
+        if (existing) {
+          existing.threads = (existing.threads ?? 1) + (script.threads ?? 1);
+        } else {
+          merged.push({ ...script })
+        }
+      }
+
+      this.executors.set(hostname, merged);
+    }
+  }
+
+  clearAllocation(script: ScriptTemplate, hostname: string) {
     const scripts = this.executors.get(hostname) ?? [];
 
     for (let i = 0; i < scripts.length; i++) {
@@ -144,7 +156,7 @@ export class AllocationBuffer {
       scripts.splice(i, 1);
 
       const ramCost = this.ns.getScriptRam(s.filename)
-      const threads = s.opts?.threads ?? 1;
+      const threads = s.threads ?? 1;
       const allocator = getAllocationServer(this.ns, hostname)
       allocator.allocatedRam -= ramCost * threads;
       break;

@@ -2,13 +2,14 @@ import { NS, RunOptions, ScriptArg } from "@ns";
 import { getFreeRAM, get_Access, validateHostname } from "./servers";
 import { get_subservers } from "./subservers";
 
-export interface Script {
+export interface ScriptTemplate {
   filename: string,
-  opts?: {
-    threads?: number,
-    duration?: number,
-    args?: any[],
-  },
+  threads?: number,
+  args?: any[],
+}
+
+export interface Script extends ScriptTemplate {
+  filename: string,
   status?: {
     pid: number,
     hostname?: string,
@@ -16,11 +17,9 @@ export interface Script {
   },
 }
 
-export function haveScriptsSameArgs(script1: Script, script2: Script): boolean {
+export function haveScriptsSameArgs(script1: ScriptTemplate, script2: ScriptTemplate): boolean {
   const sameFile = script1.filename == script2.filename;
-  const args1 = script1.opts?.args ?? [];
-  const args2 = script2.opts?.args ?? [];
-  const sameArgs = areArraysIdentical(args1, args2)
+  const sameArgs = areArraysIdentical(script1.args ?? [], script2.args ?? [])
   return sameFile && sameArgs;
 }
 
@@ -28,7 +27,7 @@ export function calculateRamCost(ns: NS, scripts: Script[]): number {
   let sum = 0;
 
   scripts.forEach(script => {
-    const threads = script.opts?.threads ?? 1;
+    const threads = script.threads ?? 1;
     sum += threads * ns.getScriptRam(script.filename)
   })
 
@@ -39,21 +38,24 @@ export function runScriptOnServer(ns: NS, hostname: string, script: Script): Scr
   validateFilename(ns, script.filename);
   validateHostname(ns, hostname);
 
-  const threads = script.opts?.threads ?? 1;
-  const args = script.opts?.args ?? [];
+  const threads = script.threads ?? 1;
+  const args = script.args ?? [];
 
   ns.scp(script.filename, hostname, "home");
   const pid = ns.exec(script.filename, hostname, threads, ...args)
 
   if (pid === 0) throw new Error(`Failed to start script ${script.filename} on ${hostname}`);
 
-  script.status = {
-    pid: pid,
-    starttime: Date.now(),
-    hostname: hostname,
+  const s: Script = {
+    ...script,
+    status: {
+      pid: pid,
+      starttime: Date.now(),
+      hostname: hostname,
+    }
   }
 
-  return script
+  return s;
 }
 
 type RunRes = {
@@ -116,17 +118,16 @@ export function findRunningScript(ns: NS, scriptName: string, ...args: ScriptArg
       if (script.filename != scriptName) return;
       if (!areArraysIdentical(script.args, args)) return;
 
-      const myScript: Script = {
+      const s: Script = {
         filename: script.filename,
-        opts: {
-          args: script.args ?? 0,
-          threads: script.threads ?? 1,
-        },
+        args: script.args ?? [],
+        threads: script.threads ?? 1,
         status: {
           pid: script.pid,
+          hostname: server.hostname,
         }
       }
-      scriptList.push(myScript);
+      scriptList.push(s);
     })
   })
 
@@ -150,7 +151,7 @@ export function validateFilename(ns: NS, scriptName: string) {
 export function findExecutor(ns: NS, script: Script): string | undefined {
   validateFilename(ns, script.filename)
 
-  const threads = script.opts?.threads || 1;
+  const threads = script.threads || 1;
   const ram_cost = ns.getScriptRam(script.filename) * threads;
 
   const validServers = get_subservers(ns, "home")
