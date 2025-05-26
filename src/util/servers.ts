@@ -28,7 +28,7 @@ export function isMoneyMaxed(ns: NS, hostname: string): boolean {
   return cur >= max;
 }
 
-export function get_Access(ns: NS, rootName: string): boolean {
+export function getAccess(ns: NS, rootName: string): boolean {
   const server = ns.getServer(rootName);
 
   if (!server.sshPortOpen && ns.fileExists("BruteSSH.exe")) ns.brutessh(rootName);
@@ -45,12 +45,22 @@ export function get_Access(ns: NS, rootName: string): boolean {
   return server.hasAdminRights;
 }
 
+
 export function validateHostname(ns: NS, hostname: string): void {
   if (!ns.serverExists(hostname)) {
     ns.ui.openTail();
     ns.printf("%s is not a valid Server name")
     ns.exit();
   }
+}
+
+export function getSecuritySurplus(ns: NS, hostname: string): number {
+  validateHostname(ns, hostname);
+
+  const server = ns.getServer(hostname)
+  const cur = server.hackDifficulty ?? server.minDifficulty ?? 0;
+  const min = server.minDifficulty ?? 0;
+  return cur - min;
 }
 
 export function getFreeRAM(ns: NS, hostname: string): number {

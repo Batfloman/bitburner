@@ -1,11 +1,9 @@
-import { NS, Server } from "@ns";
-import { getExecutors, get_subservers } from "./subservers";
-import { runScriptOnServer, Script } from "./scripts";
-import { get_Access } from "./servers";
+import { NS } from "@ns";
+import { getSubservers } from "./subservers";
 
 
 export function getTotalFreeRAM(ns: NS, includeHome = false) {
-  const servers = includeHome ? get_subservers(ns, "home") : get_subservers(ns, "home", new Set(["home"]));
+  const servers = includeHome ? getSubservers(ns, "home") : getSubservers(ns, "home", ["home"]);
 
   let freeRam = 0
   servers
@@ -18,7 +16,7 @@ export function getTotalFreeRAM(ns: NS, includeHome = false) {
 }
 
 export function getTotalUsedRAM(ns: NS, includeHome = false) {
-  const servers = includeHome ? get_subservers(ns, "home") : get_subservers(ns, "home", new Set(["home"]));
+  const servers = includeHome ? getSubservers(ns, "home") : getSubservers(ns, "home", ["home"]);
 
   let usedRam = 0
   servers
@@ -31,7 +29,7 @@ export function getTotalUsedRAM(ns: NS, includeHome = false) {
 }
 
 export function getTotalRam(ns: NS, includeHome = false) {
-  const servers = includeHome ? get_subservers(ns, "home") : get_subservers(ns, "home", new Set(["home"]));
+  const servers = includeHome ? getSubservers(ns, "home") : getSubservers(ns, "home", ["home"]);
 
   let ram = 0
   servers

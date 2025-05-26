@@ -1,6 +1,6 @@
 import { NS, RunOptions, ScriptArg } from "@ns";
-import { getFreeRAM, get_Access, validateHostname } from "./servers";
-import { get_subservers } from "./subservers";
+import { getFreeRAM, getAccess, validateHostname } from "./servers";
+import { getSubservers } from "./subservers";
 
 export interface ScriptTemplate {
   filename: string,
@@ -24,7 +24,7 @@ export function haveScriptsSameArgs(script1: ScriptTemplate, script2: ScriptTemp
   return sameFile && sameArgs;
 }
 
-export function getRamCost(ns: NS, ...scripts: Script[]): number {
+export function getRamCost(ns: NS, ...scripts: ScriptTemplate[]): number {
   let sum = 0;
 
   scripts.forEach(script => {
@@ -77,10 +77,10 @@ export function runOnFree(ns: NS, scriptName: string, servers: string[] | null =
 
   const ram = ns.getScriptRam(scriptName);
 
-  const server_arr = servers || Array.from(get_subservers(ns, "home"));
+  const server_arr = servers || Array.from(getSubservers(ns, "home"));
   const potentialServers = server_arr.map(server => ns.getServer(server));
   const freeServers = potentialServers
-    .filter(server => get_Access(ns, server.hostname))
+    .filter(server => getAccess(ns, server.hostname))
     .filter(server => (server.maxRam - server.ramUsed) > ram)
 
   if (freeServers.length <= 0) return {
@@ -113,7 +113,7 @@ function areArraysIdentical(arr1: any[], arr2: any[]) {
 }
 
 export function findRunningScript(ns: NS, scriptName: string, ...args: ScriptArg[]): Script[] {
-  const servers = Array.from(get_subservers(ns, "home")).map(server => ns.getServer(server));
+  const servers = Array.from(getSubservers(ns, "home")).map(server => ns.getServer(server));
   const scriptList: Script[] = [];
 
   servers.forEach(server => {
@@ -158,7 +158,7 @@ export function findExecutor(ns: NS, script: Script): string | undefined {
   const threads = script.threads || 1;
   const ram_cost = ns.getScriptRam(script.filename) * threads;
 
-  const validServers = get_subservers(ns, "home")
+  const validServers = getSubservers(ns, "home")
     .filter(server => server != "home")
     .filter(server => getFreeRAM(ns, server) > ram_cost);
 

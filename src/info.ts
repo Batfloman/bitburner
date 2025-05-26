@@ -1,7 +1,7 @@
 import { NS, Server } from "@ns";
-import { getTotalFreeRAM, getTotalRam, getTotalUsedRAM } from "./util/network";
-import { getFreeRAM, getMoneyPerSec, get_Access } from "./util/servers";
-import { find_minimizer_target, find_target, get_subservers } from "./util/subservers";
+import { getTotalRam, getTotalUsedRAM } from "./util/network";
+import { getMoneyPerSec, getAccess } from "./util/servers";
+import { find_minimizer_target, find_target, getSubservers } from "./util/subservers";
 
 export async function main(ns: NS): Promise<void> {
   ns.disableLog("ALL")
@@ -16,8 +16,8 @@ export async function main(ns: NS): Promise<void> {
   while (true) {
     ns.clearLog();
 
-    const servers = get_subservers(ns, "home", new Set(["home"]))
-      .filter(server => get_Access(ns, server))
+    const servers = getSubservers(ns, "home", ["home"])
+      .filter(server => getAccess(ns, server))
       .map(server => ns.getServer(server))
       .filter(server => !server.purchasedByPlayer)
       .filter(server => (server.requiredHackingSkill || 0) < ns.getPlayer().skills.hacking)

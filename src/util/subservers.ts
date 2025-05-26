@@ -1,20 +1,20 @@
 import { NS } from "@ns";
-import { getMoneyPerSec, get_Access, isMoneyMaxed, isWeakend } from "./servers";
+import { getMoneyPerSec, getAccess, isMoneyMaxed, isWeakend } from "./servers";
 
 export async function main(ns: NS) {
-  const found = get_subservers(ns, "home");
+  const found = getSubservers(ns, "home");
   ns.tprint(found);
 }
 
-export function get_subservers(ns: NS, rootName: string, excluded: Set<string> = new Set(), found: Set<string> = new Set()): string[] {
-  if (!excluded.has(rootName)) {
+export function getSubservers(ns: NS, rootName: string, excluded: string[] = [], found: Set<string> = new Set()): string[] {
+  if (!new Set(excluded).has(rootName)) {
     found.add(rootName);
   }
 
   ns.scan(rootName)
     .filter(a => !found.has(a))
     .forEach((sub) => {
-      get_subservers(ns, sub, excluded, found);
+      getSubservers(ns, sub, excluded, found);
     })
 
   return Array.from(found);
@@ -22,13 +22,13 @@ export function get_subservers(ns: NS, rootName: string, excluded: Set<string> =
 
 export function getExecutors(ns: NS, rootName: string, excluded: string[]): string[] {
   const excludedSet = new Set(excluded);
-  return get_subservers(ns, rootName, excludedSet)
-    .filter(server => get_Access(ns, server))
+  return getSubservers(ns, rootName, excludedSet)
+    .filter(server => getAccess(ns, server))
 }
 
 export function find_target(ns: NS) {
-  const servers = get_subservers(ns, "home", new Set(["home"]))
-    .filter(server => get_Access(ns, server))
+  const servers = getSubservers(ns, "home", new Set(["home"]))
+    .filter(server => getAccess(ns, server))
     .map(server => ns.getServer(server))
     .filter(server => !server.purchasedByPlayer)
     .filter(server => (server.requiredHackingSkill || 0) < ns.getPlayer().skills.hacking)
@@ -38,8 +38,8 @@ export function find_target(ns: NS) {
 }
 
 export function find_minimizer_target(ns: NS) {
-  const servers = get_subservers(ns, "home", new Set(["home"]))
-    .filter(server => get_Access(ns, server))
+  const servers = getSubservers(ns, "home", new Set(["home"]))
+    .filter(server => getAccess(ns, server))
     .map(server => ns.getServer(server))
     .filter(server => !server.purchasedByPlayer)
     .filter(server => (server.requiredHackingSkill || 0) < ns.getPlayer().skills.hacking)
