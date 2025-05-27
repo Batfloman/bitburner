@@ -38,12 +38,14 @@ export function find_target(ns: NS) {
 }
 
 export function find_minimizer_target(ns: NS) {
-  const servers = getSubservers(ns, "home", new Set(["home"]))
+  const servers = getSubservers(ns, "home", ["home"])
     .filter(server => getAccess(ns, server))
     .map(server => ns.getServer(server))
     .filter(server => !server.purchasedByPlayer)
     .filter(server => (server.requiredHackingSkill || 0) < ns.getPlayer().skills.hacking)
     .filter(server => !isWeakend(ns, server.hostname) || !isMoneyMaxed(ns, server.hostname))
+
+  if (servers.length <= 0) return;
 
   servers.sort((a, b) => a.moneyMax - b.moneyMax);
   return servers[0].hostname

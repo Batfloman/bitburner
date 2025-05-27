@@ -26,7 +26,7 @@ export async function main(ns: NS): Promise<void> {
     servers.forEach(server => printInfo(ns, server));
 
     ns.printf("target   %s", find_target(ns))
-    ns.printf("minimize %s", find_minimizer_target(ns))
+    ns.printf("minimize %s", (find_minimizer_target(ns) ?? " - "))
 
     ns.printf("Used %.2f: %s / %s", getTotalUsedRAM(ns) / getTotalRam(ns), ns.formatRam(getTotalUsedRAM(ns)), ns.formatRam(getTotalRam(ns)))
 
